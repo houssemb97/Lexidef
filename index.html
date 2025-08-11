@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LexiDéf – Le jeu des définitions</title>
+  <meta name="description" content="Retrouve les mots d'une définition à partir d'un mot donné. Inspiré par Pedantix, version 100% front sans build." />
+  <style>
+    :root{--bg:#0f172a;--card:#111827;--muted:#94a3b8;--text:#e5e7eb;--accent:#22c55e;--accent2:#10b981;--chip:#1f2937;--chipText:#e5e7eb;--danger:#ef4444;--warning:#f59e0b}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;background:linear-gradient(180deg,#0b1226,#0f172a 30%,#0b1226 100%);color:var(--text)}
+    .container{max-width:980px;margin:0 auto;padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px}
+    h1{font-size:clamp(22px,2.6vw,34px);margin:0;font-weight:800;letter-spacing:-.02em}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .btn{background:#1f2937;border:1px solid #334155;color:#e5e7eb;padding:10px 14px;border-radius:12px;cursor:pointer}
+    .btn:hover{filter:brightness(1.1)}
+    .btn[disabled]{opacity:.5;cursor:not-allowed}
+    .btn.acc{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#052e1a}
+    .btn.small{padding:6px 10px;border-radius:10px}
+    .card{background:linear-gradient(180deg,#0b1326,#0a0f1e);border:1px solid #1f2937;border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .card-h{padding:16px 18px;border-bottom:1px solid #1f2937;display:flex;justify-content:space-between;align-items:center}
+    .title{font-weight:700}
+    .meta{color:var(--muted);font-size:13px}
+    .card-c{padding:18px}
+    .input{flex:1;min-width:220px;background:#0b1222;border:1px solid #334155;border-radius:12px;color:var(--text);padding:12px 14px}
+    .switch{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
+    .progress{height:10px;background:#0b1222;border:1px solid #293241;border-radius:999px;overflow:hidden}
+    .progress>div{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0%;transition:width .3s ease}
+    .msg{display:inline-block;margin-top:8px;padding:6px 10px;border-radius:10px;background:#0b1222;border:1px solid #1f2937;font-size:13px}
+    .def{line-height:1.8;font-size:clamp(16px,1.6vw,18px)}
+    .mask{display:inline-block;vertical-align:baseline}
+    .mask .box{display:inline-block;width:8px;height:14px;border-radius:3px;margin:0 1px;background:#1f2937}
+    .chips{display:flex;flex-wrap:wrap;gap:8px}
+    .chip{background:var(--chip);border:1px solid #334155;color:var(--chipText);padding:6px 10px;border-radius:999px;font-size:13px}
+    details{opacity:.9}
+    .footer{color:#8aa0b5;font-size:12px;text-align:center;margin-top:18px}
+    .pill{font-size:12px;color:#062811;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:999px;padding:2px 8px;font-weight:700}
+    .kpi{display:flex;gap:14px;align-items:center;color:#9fb2c7}
+    .kpi b{color:#cfe7ff}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:860px){.grid{grid-template-columns:1.2fr .8fr}}
+    .subtitle{color:#9fb2c7;font-size:13px;margin-bottom:8px}
+    .toggle{appearance:none;width:36px;height:22px;border:1px solid #334155;border-radius:999px;background:#0b1222;position:relative;cursor:pointer}
+    .toggle:checked{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none}
+    .toggle:before{content:"";position:absolute;width:16px;height:16px;background:#e5e7eb;border-radius:50%;top:2px;left:2px;transition:all .2s}
+    .toggle:checked:before{left:18px}
+    .help{color:#9fb2c7}
+    .link{color:#9ae6b4}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>LexiDéf <span class="pill">Beta</span></h1>
+      <div class="row">
+        <button class="btn small" id="btn-new">Nouvelle partie</button>
+        <button class="btn small" id="btn-daily">Mode du jour</button>
+        <button class="btn small" id="btn-share">Partager</button>
+        <a class="btn small" id="btn-export" download="lexidef.html" href="#">Exporter</a>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <div class="card-h">
+          <div class="title">Mot donné : <b id="word">—</b></div>
+          <div class="kpi">
+            <span>⏱ <b id="time">00:00</b></span>
+            <span>📚 <b id="count">0/0</b></span>
+          </div>
+        </div>
+        <div class="card-c">
+          <div class="row" style="justify-content:space-between;margin-bottom:10px">
+            <label class="switch">
+              <input type="checkbox" class="toggle" id="toggle-stop" checked>
+              Ignorer les mots-outils (stopwords)
+            </label>
+            <div class="row">
+              <button class="btn small" id="btn-letter">Lettre d'indice (<span id="hint-n">3</span>)</button>
+              <button class="btn small" id="btn-hint">Révéler un mot (<span id="hint-n2">3</span>)</button>
+            </div>
+          </div>
+
+          <form id="form" class="row" style="margin-bottom:12px">
+            <input id="guess" class="input" placeholder="Propose un mot présent dans la définition…" autocomplete="off" />
+            <button class="btn acc" type="submit">Valider</button>
+          </form>
+
+          <div class="progress"><div id="bar"></div></div>
+          <div class="meta">Progression : <span id="progress">0</span>%</div>
+          <div class="msg" id="msg" style="display:none"></div>
+
+          <h3 style="margin:18px 0 6px 0">Définition à compléter</h3>
+          <p id="definition" class="def"></p>
+
+          <div style="margin-top:14px">
+            <div class="subtitle">Mots découverts</div>
+            <div id="chips" class="chips"></div>
+          </div>
+
+          <details style="margin-top:10px">
+            <summary>Historique des propositions</summary>
+            <ul id="history" class="meta" style="margin-top:8px"></ul>
+          </details>
+        </div>
+      </section>
+
+      <aside class="card">
+        <div class="card-h"><div class="title">Créer sa propre partie</div></div>
+        <div class="card-c">
+          <label class="subtitle">Mot</label>
+          <input id="c-word" class="input" placeholder="Ex. : Photosynthèse" />
+          <label class="subtitle" style="margin-top:10px">Définition</label>
+          <textarea id="c-def" class="input" style="height:140px"></textarea>
+          <div class="row" style="justify-content:flex-end;margin-top:10px">
+            <button class="btn small" id="btn-reset">Réinitialiser</button>
+            <button class="btn acc small" id="btn-use">Utiliser</button>
+          </div>
+          <p class="help" style="margin-top:10px">Astuce : tu peux partager une partie custom via l’URL (paramètres <span class="link">?word=…&def=…</span> encodés en base64).</p>
+      </div></aside>
+    </div>
+
+    <p class="footer">Inspiré par Pedantix — ici, l’objectif est de retrouver les mots d’une définition à partir d’un mot donné. 100% frontend, un seul fichier HTML.
+    </p>
+  </div>
+
+<script>
+(function(){
+  // --------------------- Utils ---------------------
+  const frenchStop = new Set(["alors","au","aucuns","aussi","autre","avant","avec","avoir","bon","car","ce","cela","ces","ceux","chaque","ci","comme","comment","dans","des","du","dedans","dehors","depuis","devrait","doit","donc","dos","droite","début","elle","elles","en","encore","essai","est","et","eu","fait","faites","fois","font","force","haut","hors","ici","il","ils","je","juste","la","le","les","leur","là","ma","maintenant","mais","mes","mine","moins","mon","mot","même","ni","nommés","notre","nous","nouveaux","ou","où","par","parce","parole","pas","personnes","peu","pièce","plupart","pour","pourquoi","quand","que","quel","quelle","quelles","quels","qui","sa","sans","ses","seulement","si","sien","son","sont","sous","soyez","sujet","sur","ta","tandis","tellement","tels","tes","ton","tous","tout","trop","très","tu","valeur","voie","voient","vont","votre","vous","vu","ça","étaient","état","étions","été","être"]);
+
+  const $ = (sel)=>document.querySelector(sel);
+  const $$=(sel)=>Array.from(document.querySelectorAll(sel));
+  const pad2=(n)=>String(n).padStart(2,'0');
+  const fmt=(sec)=>pad2(Math.floor(sec/60))+":"+pad2(Math.floor(sec%60));
+  const encodeB64 = (s)=>btoa(unescape(encodeURIComponent(s)));
+  const decodeB64 = (s)=>decodeURIComponent(escape(atob(s)));
+
+  function normalize(str){
+    return (str||"").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu,"").replace(/[^a-z0-9\-']/g,' ').replace(/\s+/g,' ').trim();
+  }
+  function tokenize(text){
+    const t = normalize(text); if(!t) return []; return t.split(' ').filter(Boolean);
+  }
+  function uniqueWords(defText, ignoreStop){
+    const tokens = tokenize(defText);
+    const map = new Map();
+    const srcWords = defText.split(/(\b)/);
+    let idx=0; // rough mapping from token index to display variant
+    tokens.forEach((tok)=>{
+      if(!tok) return;
+      if(ignoreStop && frenchStop.has(tok)) return;
+      if(/^\d+$/.test(tok)) return;
+      if(tok.length<2) return;
+      // find next word-like chunk for display version
+      let display = tok;
+      for(let i=idx;i<srcWords.length;i++){
+        if(/[\p{L}\p{N}'-]+/u.test(srcWords[i])){ display = srcWords[i]; idx = i+1; break; }
+      }
+      if(!map.has(tok)) map.set(tok,new Set());
+      map.get(tok).add(display);
+    });
+    return map; // Map<normalized, Set<displayVariants>>
+  }
+
+  // --------------------- Seed data ---------------------
+  const DEFAULT = [
+    {word:"Photosynthèse", definition:"Processus par lequel les plantes vertes et certaines bactéries transforment l'énergie lumineuse en énergie chimique, en synthétisant des glucides à partir du dioxyde de carbone et de l'eau, généralement en libérant de l'oxygène."},
+    {word:"Algorithme", definition:"Suite finie d'instructions non ambiguës permettant de résoudre un problème ou d'accomplir une tâche par un enchaînement d'opérations."},
+    {word:"Sérendipité", definition:"Aptitude à faire par hasard des découvertes utiles ou heureuses, parfois en cherchant autre chose."},
+    {word:"Osmose", definition:"Phénomène de diffusion d'un solvant à travers une membrane semi-perméable, allant du milieu le moins concentré vers le plus concentré, jusqu'à l'équilibre des concentrations."}
+  ];
+
+  // --------------------- State ---------------------
+  let game = {word:"—", definition:""};
+  let ignoreStop = true;
+  let targetMap = new Map();
+  let found = new Set();
+  let history = [];
+  let start = Date.now();
+  let timerInt = null;
+  let hints = 3;
+
+  // --------------------- DOM refs ---------------------
+  const elWord = $('#word');
+  const elTime = $('#time');
+  const elCount = $('#count');
+  const elToggle = $('#toggle-stop');
+  const elDef = $('#definition');
+  const elForm = $('#form');
+  const elGuess = $('#guess');
+  const elMsg = $('#msg');
+  const elBar = $('#bar');
+  const elProg = $('#progress');
+  const elChips = $('#chips');
+  const elHistory = $('#history');
+  const elHintN = $('#hint-n');
+  const elHintN2 = $('#hint-n2');
+
+  // custom form
+  const cWord = $('#c-word');
+  const cDef = $('#c-def');
+
+  // buttons
+  $('#btn-new').onclick = ()=> newRandom();
+  $('#btn-daily').onclick = ()=> dailyMode();
+  $('#btn-share').onclick = ()=> share();
+  $('#btn-export').onclick = (e)=>{ e.target.href = 'data:text/html;charset=utf-8,'+encodeURIComponent(document.documentElement.outerHTML); };
+  $('#btn-letter').onclick = ()=> revealFirstLetter();
+  $('#btn-hint').onclick = ()=> revealHint();
+  $('#btn-reset').onclick = ()=>{ cWord.value=''; cDef.value=''; };
+  $('#btn-use').onclick = ()=> useCustom();
+  elToggle.onchange = ()=>{ ignoreStop = elToggle.checked; rebuildTargets(); renderAll(); };
+
+  elForm.onsubmit = (ev)=>{ ev.preventDefault(); submitGuess(elGuess.value); elGuess.value=''; elGuess.focus(); };
+
+  // --------------------- Core ---------------------
+  function startTimer(){
+    if(timerInt) clearInterval(timerInt);
+    start = Date.now();
+    timerInt = setInterval(()=>{ elTime.textContent = fmt((Date.now()-start)/1000); }, 1000);
+  }
+  function stopTimer(){ if(timerInt) clearInterval(timerInt); }
+
+  function rebuildTargets(){ targetMap = uniqueWords(game.definition, ignoreStop); }
+
+  function newRandom(){
+    const pick = DEFAULT[Math.floor(Math.random()*DEFAULT.length)];
+    game = {...pick}; found = new Set(); history=[]; hints=3; elHintN.textContent = elHintN2.textContent = hints; rebuildTargets(); startTimer(); renderAll(); saveState(null); showMsg('Nouvelle partie.');
+  }
+
+  function dailyMode(){
+    const d = new Date(); const seed = d.getFullYear()*1000 + (d.getMonth()+1)*50 + d.getDate();
+    const idx = seed % DEFAULT.length; const pick = DEFAULT[idx];
+    game = {...pick}; rebuildTargets();
+    // try restore progress for today
+    const key = dailyKey();
+    const saved = JSON.parse(localStorage.getItem(key)||'null');
+    if(saved && saved.word === game.word){ found = new Set(saved.found||[]); history = saved.history||[]; hints = saved.hints ?? 3; }
+    else { found = new Set(); history=[]; hints=3; }
+    elHintN.textContent = elHintN2.textContent = hints;
+    startTimer(); renderAll(); showMsg("Mode du jour chargé.");
+  }
+
+  function dailyKey(){ const d = new Date(); return `lexidef-${d.toISOString().slice(0,10)}`; }
+
+  function saveState(customKey){
+    const key = customKey || (location.search.includes('mode=daily')? dailyKey() : 'lexidef-last');
+    const data = {word:game.word, def:game.definition, found:[...found], history, hints};
+    try{ localStorage.setItem(key, JSON.stringify(data)); }catch(e){}
+  }
+
+  function submitGuess(raw){
+    const guess = (raw||'').trim(); if(!guess) return;
+    const norm = normalize(guess);
+    history.unshift({text:guess,norm,ok:targetMap.has(norm)});
+    if(found.has(norm)){ showMsg('Déjà trouvé.'); renderHistory(); return; }
+    if(targetMap.has(norm)){
+      found.add(norm); showMsg('👍 Bien vu !');
+    }else{
+      showMsg('❌ Pas dans la définition.');
+    }
+    renderAll(); saveState(null);
+  }
+
+  function showMsg(t){ elMsg.style.display='inline-block'; elMsg.textContent=t; clearTimeout(showMsg._t); showMsg._t=setTimeout(()=>{elMsg.style.display='none'},1500); }
+
+  function revealHint(){ if(hints<=0) return; const remaining = [...targetMap.keys()].filter(k=>!found.has(k)); if(!remaining.length) return; const pick = remaining[Math.floor(Math.random()*remaining.length)]; found.add(pick); hints--; elHintN.textContent=elHintN2.textContent=hints; showMsg('✨ Indice révélé !'); renderAll(); saveState(null); }
+
+  function revealFirstLetter(){ if(hints<=0) return; const remaining = [...targetMap.keys()].filter(k=>!found.has(k)); if(!remaining.length) return; const pick = remaining[Math.floor(Math.random()*remaining.length)]; const letter = pick[0]; hints--; elHintN.textContent=elHintN2.textContent=hints; showMsg(`Lettre d'indice : "${letter}"`); saveState(null); }
+
+  function share(){
+    const prog = Math.round((found.size/(targetMap.size||1))*100);
+    const text = `LexiDéf — ${game.word}\n${prog}% des mots de la définition retrouvés en ${elTime.textContent}.\nJoue ici : ${location.href}`;
+    if(navigator.share){ navigator.share({text}); } else { navigator.clipboard.writeText(text).then(()=>showMsg('Copié dans le presse‑papiers.')); }
+  }
+
+  // --------- URL custom: ?word=BASE64&def=BASE64 or ?mode=daily ---------
+  function tryLoadFromURL(){
+    const p = new URLSearchParams(location.search);
+    const mode = p.get('mode');
+    if(mode==='daily'){ dailyMode(); return true; }
+    const w = p.get('word'); const d = p.get('def');
+    if(w && d){
+      try{ const word = decodeB64(w); const def = decodeB64(d); game={word,definition:def}; }catch(e){ console.warn(e); }
+      found=new Set(); history=[]; hints=3; elHintN.textContent=elHintN2.textContent=hints; rebuildTargets(); startTimer(); renderAll(); showMsg('Partie personnalisée chargée depuis l’URL.'); saveState('lexidef-custom'); return true;
+    }
+    return false;
+  }
+
+  function useCustom(){
+    const word = (cWord.value||'Mot mystère').trim(); const def = (cDef.value||'Définition vide.').trim();
+    const w = encodeB64(word); const d = encodeB64(def);
+    const url = location.origin + location.pathname + `?word=${w}&def=${d}`;
+    history.push({text:'[Partage]',norm:'',ok:true});
+    window.history.replaceState({},'',url);
+    game={word,definition:def}; found=new Set(); hints=3; elHintN.textContent=elHintN2.textContent=hints; rebuildTargets(); startTimer(); renderAll(); saveState('lexidef-custom'); showMsg('Partie personnalisée prête. URL mise à jour.');
+  }
+
+  // --------------------- Renderers ---------------------
+  function renderDef(){
+    const src = game.definition; const parts = src.split(/(\b)/);
+    const frag = document.createDocumentFragment();
+    parts.forEach((chunk)=>{
+      const isWord = /[\p{L}\p{N}'-]+/u.test(chunk);
+      if(!isWord){ frag.append(document.createTextNode(chunk)); return; }
+      const n = normalize(chunk);
+      const isTarget = targetMap.has(n);
+      const hidden = isWord && isTarget && !found.has(n);
+      if(!hidden){ const span=document.createElement('span'); span.style.fontWeight=600; span.textContent=chunk; frag.append(span); return; }
+      const span=document.createElement('span'); span.className='mask';
+      for(let i=0;i<chunk.length;i++){ const box=document.createElement('span'); box.className='box'; span.append(box); }
+      frag.append(span);
+    });
+    elDef.innerHTML=''; elDef.append(frag);
+  }
+
+  function renderChips(){
+    elChips.innerHTML='';
+    [...found].sort().forEach((n)=>{
+      const label = [...(targetMap.get(n)||[n])][0];
+      const div=document.createElement('span'); div.className='chip'; div.textContent=label; elChips.append(div);
+    });
+  }
+
+  function renderHistory(){
+    elHistory.innerHTML='';
+    history.slice(0,100).forEach(h=>{
+      const li=document.createElement('li'); li.textContent=h.text + (h.ok? ' — OK':' — Non'); elHistory.append(li);
+    });
+  }
+
+  function renderHeader(){
+    elWord.textContent = game.word;
+    const total = targetMap.size; const done = found.size; elCount.textContent = `${done}/${total}`;
+    const prog = total? Math.round(done/total*100) : 0; elProg.textContent = prog; elBar.style.width = prog+'%';
+  }
+
+  function renderAll(){ renderHeader(); renderDef(); renderChips(); renderHistory(); }
+
+  // --------------------- Init ---------------------
+  (function init(){
+    ignoreStop = true; elToggle.checked = true;
+    if(!tryLoadFromURL()){ newRandom(); }
+  })();
+})();
+</script>
+</body>
+</html>
+
+git add lexi.html
+git commit -m "Mise en ligne LexiDéf"
+git branch -M main
+git remote add origin https://github.com/houssemb97/lexidef.git
+git push -u origin main
