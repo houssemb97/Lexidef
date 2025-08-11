@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>LexiDéf – Le jeu des définitions</title>
-  <meta name="description" content="Retrouve les mots d'une définition à partir d'un mot donné. Inspiré par Pedantix, version 100% front sans build." />
+  <meta name="description" content="Retrouve les mots d'une définition à partir d'un mot donné. Charge un dictionnaire externe mots.json." />
   <style>
     :root{--bg:#0f172a;--card:#111827;--muted:#94a3b8;--text:#e5e7eb;--accent:#22c55e;--accent2:#10b981;--chip:#1f2937;--chipText:#e5e7eb;--danger:#ef4444;--warning:#f59e0b}
     html,body{height:100%}
@@ -47,12 +47,13 @@
     .toggle:checked:before{left:18px}
     .help{color:#9fb2c7}
     .link{color:#9ae6b4}
+    .badge{font-size:11px;padding:2px 6px;border-radius:999px;border:1px solid #334155;background:#0b1222;color:#9fb2c7}
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>LexiDéf <span class="pill">Beta</span></h1>
+      <h1>LexiDéf <span class="pill">JSON</span></h1>
       <div class="row">
         <button class="btn small" id="btn-new">Nouvelle partie</button>
         <button class="btn small" id="btn-daily">Mode du jour</button>
@@ -68,6 +69,7 @@
           <div class="kpi">
             <span>⏱ <b id="time">00:00</b></span>
             <span>📚 <b id="count">0/0</b></span>
+            <span class="badge" id="datasetInfo">dictionnaire : —</span>
           </div>
         </div>
         <div class="card-c">
@@ -117,11 +119,11 @@
             <button class="btn small" id="btn-reset">Réinitialiser</button>
             <button class="btn acc small" id="btn-use">Utiliser</button>
           </div>
-          <p class="help" style="margin-top:10px">Astuce : tu peux partager une partie custom via l’URL (paramètres <span class="link">?word=…&def=…</span> encodés en base64).</p>
+          <p class="help" style="margin-top:10px">Tu peux aussi partager une partie custom via l’URL (paramètres <span class="link">?word=…&def=…</span> encodés en base64).</p>
       </div></aside>
     </div>
 
-    <p class="footer">Inspiré par Pedantix — ici, l’objectif est de retrouver les mots d’une définition à partir d’un mot donné. 100% frontend, un seul fichier HTML.
+    <p class="footer">Dictionnaire externe : place un fichier <code>mots.json</code> (array d’objets {word, definition}) à la racine du site. Fallback intégré si le JSON est absent.
     </p>
   </div>
 
@@ -164,7 +166,7 @@
     return map; // Map<normalized, Set<displayVariants>>
   }
 
-  // --------------------- Seed data ---------------------
+  // --------------------- Fallback seed data ---------------------
   const DEFAULT = [
     {word:"Photosynthèse", definition:"Processus par lequel les plantes vertes et certaines bactéries transforment l'énergie lumineuse en énergie chimique, en synthétisant des glucides à partir du dioxyde de carbone et de l'eau, généralement en libérant de l'oxygène."},
     {word:"Algorithme", definition:"Suite finie d'instructions non ambiguës permettant de résoudre un problème ou d'accomplir une tâche par un enchaînement d'opérations."},
@@ -174,6 +176,7 @@
   ];
 
   // --------------------- State ---------------------
+  let DATA = DEFAULT; // sera remplacé si mots.json est trouvé
   let game = {word:"—", definition:""};
   let ignoreStop = true;
   let targetMap = new Map();
@@ -198,6 +201,7 @@
   const elHistory = $('#history');
   const elHintN = $('#hint-n');
   const elHintN2 = $('#hint-n2');
+  const elDatasetInfo = $('#datasetInfo');
 
   // custom form
   const cWord = $('#c-word');
@@ -226,14 +230,18 @@
 
   function rebuildTargets(){ targetMap = uniqueWords(game.definition, ignoreStop); }
 
+  function dataset(){ return Array.isArray(DATA) && DATA.length ? DATA : DEFAULT; }
+
   function newRandom(){
-    const pick = DEFAULT[Math.floor(Math.random()*DEFAULT.length)];
+    const set = dataset();
+    const pick = set[Math.floor(Math.random()*set.length)];
     game = {...pick}; found = new Set(); history=[]; hints=3; elHintN.textContent = elHintN2.textContent = hints; rebuildTargets(); startTimer(); renderAll(); saveState(null); showMsg('Nouvelle partie.');
   }
 
   function dailyMode(){
+    const set = dataset();
     const d = new Date(); const seed = d.getFullYear()*1000 + (d.getMonth()+1)*50 + d.getDate();
-    const idx = seed % DEFAULT.length; const pick = DEFAULT[idx];
+    const idx = seed % set.length; const pick = set[idx];
     game = {...pick}; rebuildTargets();
     // try restore progress for today
     const key = dailyKey();
@@ -338,20 +346,50 @@
     const prog = total? Math.round(done/total*100) : 0; elProg.textContent = prog; elBar.style.width = prog+'%';
   }
 
-  function renderAll(){ renderHeader(); renderDef(); renderChips(); renderHistory(); }
+  function renderDatasetInfo(){
+    const n = (Array.isArray(DATA) && DATA.length) ? DATA.length : DEFAULT.length;
+    elDatasetInfo.textContent = `dictionnaire : ${n} entrées`;
+  }
+
+  function renderAll(){ renderHeader(); renderDef(); renderChips(); renderHistory(); renderDatasetInfo(); }
+
+  // --------------------- Data loading ---------------------
+  async function loadDataFromJSON(){
+    try{
+      const res = await fetch('mots.json', {cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const json = await res.json();
+      if(!Array.isArray(json)) throw new Error('Format attendu: tableau');
+      const cleaned = json.filter(x=>x && typeof x.word==='string' && typeof x.definition==='string');
+      if(!cleaned.length) throw new Error('Aucune entrée valide');
+      DATA = cleaned;
+      showMsg(`Dictionnaire chargé (${DATA.length} entrées).`);
+      renderDatasetInfo();
+      return true;
+    }catch(e){
+      console.warn('LexiDéf: échec chargement mots.json → fallback DEFAULT', e);
+      DATA = DEFAULT;
+      renderDatasetInfo();
+      return false;
+    }
+  }
 
   // --------------------- Init ---------------------
-  (function init(){
+  (async function init(){
     ignoreStop = true; elToggle.checked = true;
+    await loadDataFromJSON();
     if(!tryLoadFromURL()){ newRandom(); }
   })();
 })();
 </script>
 </body>
 </html>
+<<<<<<< HEAD
 
 git add lexi.html
 git commit -m "Mise en ligne LexiDéf"
 git branch -M main
 git remote add origin https://github.com/houssemb97/lexidef.git
 git push -u origin main
+=======
+>>>>>>> bdbb232 (Mise en ligne LexiDéf)
